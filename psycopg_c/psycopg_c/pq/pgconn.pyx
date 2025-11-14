@@ -17,6 +17,7 @@ cdef extern from * nogil:
     """
     pid_t getpid()
 
+cimport cython
 from libc.stdio cimport fdopen
 from cpython.mem cimport PyMem_Free, PyMem_Malloc
 from cpython.bytes cimport PyBytes_AsString
@@ -86,24 +87,31 @@ cdef class PGconn:
         return PGconn._from_ptr(pgconn)
 
     def connect_poll(self) -> int:
-        return _call_int(self, <conn_int_f>libpq.PQconnectPoll)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = _call_int(self, <conn_int_f>libpq.PQconnectPoll)
+        return rv
 
     def finish(self) -> None:
-        if self._pgconn_ptr is not NULL:
-            libpq.PQfinish(self._pgconn_ptr)
-            self._pgconn_ptr = NULL
+        with cython.critical_section(self):
+            if self._pgconn_ptr is not NULL:
+                libpq.PQfinish(self._pgconn_ptr)
+                self._pgconn_ptr = NULL
 
     @property
     def pgconn_ptr(self) -> int | None:
-        if self._pgconn_ptr:
-            return <long long><void *>self._pgconn_ptr
-        else:
-            return None
+        cdef long long ptr = -1
+        with cython.critical_section(self):
+            if self._pgconn_ptr:
+                ptr = <long long><void *>self._pgconn_ptr
+        return ptr if ptr != -1 else None
 
     @property
     def info(self) -> list[ConninfoOption]:
-        _ensure_pgconn(self)
-        cdef libpq.PQconninfoOption *opts = libpq.PQconninfo(self._pgconn_ptr)
+        cdef libpq.PQconninfoOption *opts
+        with cython.critical_section(self):
+            _ensure_pgconn(self)
+            opts = libpq.PQconninfo(self._pgconn_ptr)
         if opts is NULL:
             raise MemoryError("couldn't allocate connection info")
         rv = _options_from_array(opts)
@@ -111,8 +119,9 @@ cdef class PGconn:
         return rv
 
     def reset(self) -> None:
-        _ensure_pgconn(self)
-        libpq.PQreset(self._pgconn_ptr)
+        with cython.critical_section(self):
+            _ensure_pgconn(self)
+            libpq.PQreset(self._pgconn_ptr)
 
     def reset_start(self) -> None:
         if not libpq.PQresetStart(self._pgconn_ptr):
