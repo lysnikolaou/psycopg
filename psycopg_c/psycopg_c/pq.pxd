@@ -13,8 +13,11 @@ cdef extern from * nogil:
 
 from psycopg_c.pq cimport libpq
 
-ctypedef char *(*conn_bytes_f) (const libpq.PGconn *)
-ctypedef int(*conn_int_f) (const libpq.PGconn *)
+ctypedef void *(*conn_f) (const libpq.PGconn *) noexcept nogil
+ctypedef char *(*conn_bytes_f) (const libpq.PGconn *) noexcept nogil
+ctypedef int (*conn_int_f) (const libpq.PGconn *) noexcept nogil
+ctypedef void *(*conn_f_with_param) (const libpq.PGconn *, const char *) noexcept nogil
+ctypedef int (*conn_int_f_with_param) (const libpq.PGconn *, const char *) noexcept nogil
 
 
 cdef class PGconn:
