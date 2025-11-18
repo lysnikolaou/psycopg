@@ -122,7 +122,9 @@ cdef class PGconn:
             raise e.OperationalError("the connection is closed")
 
     def reset_start(self) -> None:
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQresetStart)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQresetStart(self._pgconn_ptr)
         if not rv:
             raise e.OperationalError("couldn't reset connection")
 
@@ -170,11 +172,17 @@ cdef class PGconn:
 
     @property
     def status(self) -> int:
-        return _call_libpq_int(self, <conn_int_f>libpq.PQstatus)
+        cdef libpq.ConnStatusType rv
+        with cython.critical_section(self):
+            rv = libpq.PQstatus(self._pgconn_ptr)
+        return rv
 
     @property
     def transaction_status(self) -> int:
-        return _call_libpq_int(self, <conn_int_f>libpq.PQtransactionStatus)
+        cdef libpq.PGTransactionStatusType rv
+        with cython.critical_section(self):
+            rv = libpq.PQtransactionStatus(self._pgconn_ptr)
+        return rv
 
     def parameter_status(self, const char *name) -> bytes | None:
         cdef const char *rv = <const char *>_call_libpq_with_param(self, <conn_f_with_param>libpq.PQparameterStatus, name)
@@ -185,7 +193,10 @@ cdef class PGconn:
 
     @property
     def error_message(self) -> bytes:
-        return <char *>_call_libpq(self, <conn_f>libpq.PQerrorMessage)
+        cdef char *rv
+        with cython.critical_section(self):
+            rv = libpq.PQerrorMessage(self._pgconn_ptr)
+        return rv
 
     def get_error_message(self, encoding: str = "") -> str:
         return _clean_error_message(self.error_message, encoding or self._encoding)
@@ -231,16 +242,25 @@ cdef class PGconn:
 
     @property
     def needs_password(self) -> bool:
-        return bool(_call_libpq_int(self, <conn_int_f>libpq.PQconnectionNeedsPassword))
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQconnectionNeedsPassword(self._pgconn_ptr)
+        return bool(rv)
 
     @property
     def used_password(self) -> bool:
-        return bool(_call_libpq_int(self, <conn_int_f>libpq.PQconnectionUsedPassword))
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQconnectionUsedPassword(self._pgconn_ptr)
+        return bool(rv)
 
     @property
     def used_gssapi(self) -> bool:
         _check_supported("PQconnectionUsedGSSAPI", 160000)
-        return bool(_call_libpq_int(self, <conn_int_f>libpq.PQconnectionUsedGSSAPI))
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQconnectionUsedGSSAPI(self._pgconn_ptr)
+        return bool(rv)
 
     @property
     def ssl_in_use(self) -> bool:
@@ -521,76 +541,88 @@ cdef class PGconn:
             )
 
     def get_result(self) -> "PGresult" | None:
-        cdef libpq.PGresult *pgresult = <libpq.PGresult *>_call_libpq(self, <conn_f>libpq.PQgetResult)
+        cdef libpq.PGresult *pgresult
+        with cython.critical_section(self):
+            pgresult = libpq.PQgetResult(self._pgconn_ptr)
         if pgresult is NULL:
             return None
         return PGresult._from_ptr(pgresult)
 
     def consume_input(self) -> None:
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQconsumeInput)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQconsumeInput(self._pgconn_ptr)
         if 1 != rv:
             raise e.OperationalError(
                 f"consuming input failed: {self.get_error_message()}")
 
     def is_busy(self) -> int:
-        return _call_libpq_int(self, <conn_int_f>libpq.PQisBusy)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQisBusy(self._pgconn_ptr)
+        return rv
 
     @property
     def nonblocking(self) -> int:
-        return _call_libpq_int(self, <conn_int_f>libpq.PQisnonblocking)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQisnonblocking(self._pgconn_ptr)
+        return rv
 
     @nonblocking.setter
     def nonblocking(self, int arg) -> None:
         cdef int rv
-        cdef libpq.PGconn *pgconn_ptr
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                rv = libpq.PQsetnonblocking(pgconn_ptr, arg)
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            rv = libpq.PQsetnonblocking(self._pgconn_ptr, arg)
         if 0 > rv:
             raise e.OperationalError(
                 f"setting nonblocking failed: {self.get_error_message()}")
 
     cpdef int flush(self) except -1:
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQflush)
+        cdef int rv
+        with cython.critical_section(self):
+            if self._pgconn_ptr is NULL:
+                raise e.OperationalError("flushing failed: the connection is closed")
+            rv = libpq.PQflush(self._pgconn_ptr)
         if rv < 0:
             raise e.OperationalError(f"flushing failed: {self.get_error_message()}")
         return rv
 
     def set_single_row_mode(self) -> None:
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQsetSingleRowMode)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQsetSingleRowMode(self._pgconn_ptr)
         if not rv:
             raise e.OperationalError("setting single row mode failed")
 
     def set_chunked_rows_mode(self, size: int) -> None:
         cdef int rv
-        cdef libpq.PGconn *pgconn_ptr
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                rv = libpq.PQsetChunkedRowsMode(pgconn_ptr, size)
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            rv = libpq.PQsetChunkedRowsMode(self._pgconn_ptr, size)
         if not rv:
             raise e.OperationalError("setting chunked rows mode failed")
 
     def cancel_conn(self) -> PGcancelConn:
         _check_supported("PQcancelCreate", 170000)
-        cdef libpq.PGcancelConn *ptr = <libpq.PGcancelConn *>_call_libpq(self, <conn_f>libpq.PQcancelCreate)
+        cdef libpq.PGcancelConn *ptr
+        with cython.critical_section(self):
+            ptr = libpq.PQcancelCreate(self._pgconn_ptr)
         if not ptr:
             raise e.OperationalError("couldn't create cancelConn object")
         return PGcancelConn._from_ptr(ptr)
 
     def get_cancel(self) -> PGcancel:
-        cdef libpq.PGcancel *ptr = <libpq.PGcancel *>_call_libpq(self, <conn_f>libpq.PQgetCancel)
+        cdef libpq.PGcancel *ptr
+        with cython.critical_section(self):
+            ptr = libpq.PQgetCancel(self._pgconn_ptr)
         if not ptr:
             raise e.OperationalError("couldn't create cancel object")
         return PGcancel._from_ptr(ptr)
 
     cpdef object notifies(self):
-        cdef libpq.PGnotify *ptr = <libpq.PGnotify *>_call_libpq(self, <conn_f>libpq.PQnotifies)
+        cdef libpq.PGnotify *ptr
+        with cython.critical_section(self):
+            ptr = libpq.PQnotifies(self._pgconn_ptr)
         if ptr:
             ret = PGnotify(ptr.relname, ptr.be_pid, ptr.extra)
             libpq.PQfreemem(ptr)
@@ -602,15 +634,10 @@ cdef class PGconn:
         cdef int rv
         cdef char *cbuffer
         cdef Py_ssize_t length
-        cdef libpq.PGconn *pgconn_ptr
 
         _buffer_as_string_and_size(buffer, &cbuffer, &length)
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                rv = libpq.PQputCopyData(pgconn_ptr, cbuffer, <int>length)
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            rv = libpq.PQputCopyData(self._pgconn_ptr, cbuffer, <int>length)
         if rv < 0:
             raise e.OperationalError(
                 f"sending copy data failed: {self.get_error_message()}")
@@ -619,17 +646,11 @@ cdef class PGconn:
     def put_copy_end(self, error: bytes | None = None) -> int:
         cdef int rv
         cdef const char *cerr = NULL
-        cdef libpq.PGconn *pgconn_ptr
         if error is not None:
             cerr = PyBytes_AsString(error)
+
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                rv = libpq.PQputCopyEnd(pgconn_ptr, cerr)
-            else:
-                rv = -1
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            rv = libpq.PQputCopyEnd(self._pgconn_ptr, cerr)
         if rv < 0:
             raise e.OperationalError(
                 f"sending copy end failed: {self.get_error_message()}")
@@ -638,13 +659,9 @@ cdef class PGconn:
     def get_copy_data(self, int async_) -> tuple[int, memoryview]:
         cdef char *buffer_ptr = NULL
         cdef int nbytes
-        cdef libpq.PGconn *pgconn_ptr
+
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                nbytes = libpq.PQgetCopyData(pgconn_ptr, &buffer_ptr, async_)
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            nbytes = libpq.PQgetCopyData(self._pgconn_ptr, &buffer_ptr, async_)
         if nbytes == -2:
             raise e.OperationalError(
                 f"receiving copy data failed: {self.get_error_message()}")
@@ -660,23 +677,16 @@ cdef class PGconn:
             raise e.NotSupportedError("currently only supported on Linux")
         stream = fdopen(fileno, b"w")
         with cython.critical_section(self):
-            if self._pgconn_ptr is not NULL:
-                libpq.PQtrace(self._pgconn_ptr, stream)
+            libpq.PQtrace(self._pgconn_ptr, stream)
 
     def set_trace_flags(self, flags: Trace) -> None:
         _check_supported("PQsetTraceFlags", 140000)
-        cdef libpq.PGconn *pgconn_ptr
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                libpq.PQsetTraceFlags(pgconn_ptr, flags)
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            libpq.PQsetTraceFlags(self._pgconn_ptr, flags)
 
     def untrace(self) -> None:
         with cython.critical_section(self):
-            if self._pgconn_ptr is not NULL:
-                libpq.PQuntrace(self._pgconn_ptr)
+            libpq.PQuntrace(self._pgconn_ptr)
 
     def encrypt_password(
         self, const char *passwd, const char *user, algorithm = None
@@ -685,15 +695,10 @@ cdef class PGconn:
 
         cdef char *out
         cdef const char *calgo = NULL
-        cdef libpq.PGconn *pgconn_ptr
         if algorithm:
             calgo = algorithm
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                out = libpq.PQencryptPasswordConn(pgconn_ptr, passwd, user, calgo)
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            out = libpq.PQencryptPasswordConn(self._pgconn_ptr, passwd, user, calgo)
         if not out:
             raise e.OperationalError(
                 f"password encryption failed: {self.get_error_message()}"
@@ -709,13 +714,8 @@ cdef class PGconn:
         _check_supported("PQchangePassword", 170000)
 
         cdef libpq.PGresult *res
-        cdef libpq.PGconn *pgconn_ptr
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                res = libpq.PQchangePassword(pgconn_ptr, user, passwd)
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            res = libpq.PQchangePassword(self._pgconn_ptr, user, passwd)
         if libpq.PQresultStatus(res) != ExecStatus.COMMAND_OK:
             raise e.OperationalError(
                 f"password encryption failed: {self.get_error_message()}"
@@ -723,16 +723,9 @@ cdef class PGconn:
 
     def make_empty_result(self, int exec_status) -> PGresult:
         cdef libpq.PGresult *rv
-        cdef libpq.PGconn *pgconn_ptr
         with cython.critical_section(self):
-            pgconn_ptr = self._pgconn_ptr
-            if pgconn_ptr is not NULL:
-                rv = libpq.PQmakeEmptyPGresult(
-                    pgconn_ptr, <libpq.ExecStatusType>exec_status)
-            else:
-                rv = NULL
-        if pgconn_ptr is NULL:
-            raise e.OperationalError("the connection is closed")
+            rv = libpq.PQmakeEmptyPGresult(
+                self._pgconn_ptr, <libpq.ExecStatusType>exec_status)
         if not rv:
             raise MemoryError("couldn't allocate empty PGresult")
         return PGresult._from_ptr(rv)
@@ -745,7 +738,10 @@ cdef class PGconn:
         """
         if libpq.PG_VERSION_NUM < 140000:
             return libpq.PQ_PIPELINE_OFF
-        return _call_libpq_int(self, <conn_int_f>libpq.PQpipelineStatus)
+        cdef libpq.PGpipelineStatus rv
+        with cython.critical_section(self):
+            rv = libpq.PQpipelineStatus(self._pgconn_ptr)
+        return rv
 
     def enter_pipeline_mode(self) -> None:
         """Enter pipeline mode.
@@ -754,7 +750,9 @@ cdef class PGconn:
             mode.
         """
         _check_supported("PQenterPipelineMode", 140000)
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQenterPipelineMode)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQenterPipelineMode(self._pgconn_ptr)
         if rv != 1:
             raise e.OperationalError("failed to enter pipeline mode")
 
@@ -765,7 +763,9 @@ cdef class PGconn:
             mode.
         """
         _check_supported("PQexitPipelineMode", 140000)
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQexitPipelineMode)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQexitPipelineMode(self._pgconn_ptr)
         if rv != 1:
             raise e.OperationalError(self.get_error_message())
 
@@ -776,7 +776,9 @@ cdef class PGconn:
             or if sync failed.
         """
         _check_supported("PQpipelineSync", 140000)
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQpipelineSync)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQpipelineSync(self._pgconn_ptr)
         if rv == 0:
             raise e.OperationalError("connection not in pipeline mode")
         if rv != 1:
@@ -788,7 +790,9 @@ cdef class PGconn:
         :raises ~e.OperationalError: if the flush request failed.
         """
         _check_supported("PQsendFlushRequest ", 140000)
-        cdef int rv = _call_libpq_int(self, <conn_int_f>libpq.PQsendFlushRequest)
+        cdef int rv
+        with cython.critical_section(self):
+            rv = libpq.PQsendFlushRequest(self._pgconn_ptr)
         if rv == 0:
             raise e.OperationalError(
                 f"flush request failed: {self.get_error_message()}")
@@ -818,14 +822,14 @@ cdef void *_call_libpq_with_param(PGconn self, conn_f_with_param func, const cha
     return rv
 
 
-cdef int _call_libpq_int(PGconn self, conn_int_f func):
+cdef int _call_libpq_int(PGconn self, conn_int_f func, bint raise_exception = 1):
     cdef int rv
     cdef libpq.PGconn *pgconn_ptr
     with cython.critical_section(self):
         pgconn_ptr = self._pgconn_ptr
         if pgconn_ptr is not NULL:
             rv = func(pgconn_ptr)
-    if pgconn_ptr is NULL:
+    if pgconn_ptr is NULL and raise_exception:
         raise e.OperationalError("the connection is closed")
     return rv
 
