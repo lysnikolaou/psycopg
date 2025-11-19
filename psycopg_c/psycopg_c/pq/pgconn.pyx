@@ -105,7 +105,14 @@ cdef class PGconn:
 
     @property
     def info(self) -> list[ConninfoOption]:
-        cdef libpq.PQconninfoOption *opts = <libpq.PQconninfoOption *>_call_libpq(self, <conn_f>libpq.PQconninfo)
+        cdef libpq.PQconninfoOption *opts
+        cdef libpq.PGconn *pgconn_ptr
+        with cython.critical_section(self):
+            pgconn_ptr = self._pgconn_ptr
+            if pgconn_ptr is not NULL:
+                opts = libpq.PQconninfo(pgconn_ptr)
+        if pgconn_ptr is NULL:
+            raise e.OperationalError("the connection is closed")
         if opts is NULL:
             raise MemoryError("couldn't allocate connection info")
         rv = _options_from_array(opts)
@@ -154,7 +161,14 @@ cdef class PGconn:
     @property
     def hostaddr(self) -> bytes:
         _check_supported("PQhostaddr", 120000)
-        cdef char *rv = <char *>_call_libpq(self, <conn_f>libpq.PQhostaddr)
+        cdef char *rv = NULL
+        cdef libpq.PGconn *pgconn_ptr
+        with cython.critical_section(self):
+            pgconn_ptr = self._pgconn_ptr
+            if pgconn_ptr is not NULL:
+                rv = libpq.PQhostaddr(pgconn_ptr)
+        if pgconn_ptr is NULL:
+            raise e.OperationalError("the connection is closed")
         assert rv is not NULL
         return rv
 
@@ -185,7 +199,8 @@ cdef class PGconn:
         return rv
 
     def parameter_status(self, const char *name) -> bytes | None:
-        cdef const char *rv = <const char *>_call_libpq_with_param(self, <conn_f_with_param>libpq.PQparameterStatus, name)
+        cdef const char *rv = <const char *>_call_libpq_with_param(
+            self, <conn_f_with_param>libpq.PQparameterStatus, name)
         if rv is not NULL:
             return rv
         else:
@@ -223,7 +238,15 @@ cdef class PGconn:
     @property
     def full_protocol_version(self) -> int:
         _check_supported("PQfullProtocolVersion", 180000)
-        return _call_libpq_int(self, <conn_int_f>libpq.PQfullProtocolVersion)
+        cdef int rv
+        cdef libpq.PGconn *pgconn_ptr
+        with cython.critical_section(self):
+            pgconn_ptr = self._pgconn_ptr
+            if pgconn_ptr is not NULL:
+                rv = libpq.PQfullProtocolVersion(pgconn_ptr)
+        if pgconn_ptr is NULL:
+            raise e.OperationalError("the connection is closed")
+        return rv
 
     @property
     def server_version(self) -> int:
@@ -267,14 +290,16 @@ cdef class PGconn:
         return bool(_call_libpq_int(self, <conn_int_f>libpq.PQsslInUse))
 
     def exec_(self, const char *command) -> PGresult:
-        cdef libpq.PGresult *pgresult = <libpq.PGresult*>_call_libpq_with_param(self, <conn_f_with_param>libpq.PQexec, command)
+        cdef libpq.PGresult *pgresult = <libpq.PGresult*>_call_libpq_with_param(
+            self, <conn_f_with_param>libpq.PQexec, command)
         if pgresult is NULL:
             raise e.OperationalError(
                 f"executing query failed: {self.get_error_message()}")
         return PGresult._from_ptr(pgresult)
 
     def send_query(self, const char *command) -> None:
-        cdef int rv = _call_libpq_int_with_param(self, <conn_int_f_with_param>libpq.PQsendQuery, command)
+        cdef int rv = _call_libpq_int_with_param(
+            self, <conn_int_f_with_param>libpq.PQsendQuery, command)
         if not rv:
             raise e.OperationalError(
                 f"sending query failed: {self.get_error_message()}")
@@ -477,7 +502,8 @@ cdef class PGconn:
         return PGresult._from_ptr(rv)
 
     def describe_prepared(self, const char *name) -> PGresult:
-        cdef libpq.PGresult *rv = <libpq.PGresult *>_call_libpq_with_param(self, <conn_f_with_param>libpq.PQdescribePrepared, name)
+        cdef libpq.PGresult *rv = <libpq.PGresult *>_call_libpq_with_param(
+            self, <conn_f_with_param>libpq.PQdescribePrepared, name)
         if rv is NULL:
             raise e.OperationalError(
                 f"describe prepared failed: {self.get_error_message()}"
@@ -485,14 +511,16 @@ cdef class PGconn:
         return PGresult._from_ptr(rv)
 
     def send_describe_prepared(self, const char *name) -> None:
-        cdef int rv = _call_libpq_int_with_param(self, <conn_int_f_with_param>libpq.PQsendDescribePrepared, name)
+        cdef int rv = _call_libpq_int_with_param(
+            self, <conn_int_f_with_param>libpq.PQsendDescribePrepared, name)
         if not rv:
             raise e.OperationalError(
                 f"sending describe prepared failed: {self.get_error_message()}"
             )
 
     def describe_portal(self, const char *name) -> PGresult:
-        cdef libpq.PGresult *rv = <libpq.PGresult *>_call_libpq_with_param(self, <conn_f_with_param>libpq.PQdescribePortal, name)
+        cdef libpq.PGresult *rv = <libpq.PGresult *>_call_libpq_with_param(
+            self, <conn_f_with_param>libpq.PQdescribePortal, name)
         if rv is NULL:
             raise e.OperationalError(
                 f"describe prepared failed: {self.get_error_message()}"
@@ -500,7 +528,8 @@ cdef class PGconn:
         return PGresult._from_ptr(rv)
 
     def send_describe_portal(self, const char *name) -> None:
-        cdef int rv = _call_libpq_int_with_param(self, <conn_int_f_with_param>libpq.PQsendDescribePortal, name)
+        cdef int rv = _call_libpq_int_with_param(
+            self, <conn_int_f_with_param>libpq.PQsendDescribePortal, name)
         if not rv:
             raise e.OperationalError(
                 f"sending describe prepared failed: {self.get_error_message()}"
@@ -508,7 +537,14 @@ cdef class PGconn:
 
     def close_prepared(self, const char *name) -> PGresult:
         _check_supported("PQclosePrepared", 170000)
-        cdef libpq.PGresult *rv = <libpq.PGresult *>_call_libpq_with_param(self, <conn_f_with_param>libpq.PQclosePrepared, name)
+        cdef libpq.PGresult *rv
+        cdef libpq.PGconn *pgconn_ptr
+        with cython.critical_section(self):
+            pgconn_ptr = self._pgconn_ptr
+            if pgconn_ptr is not NULL:
+                rv = libpq.PQclosePrepared(pgconn_ptr, name)
+        if pgconn_ptr is NULL:
+            raise e.OperationalError("the connection is closed")
         if rv is NULL:
             raise e.OperationalError(
                 f"close prepared failed: {self.get_error_message()}"
@@ -517,7 +553,14 @@ cdef class PGconn:
 
     def send_close_prepared(self, const char *name) -> None:
         _check_supported("PQsendClosePrepared", 170000)
-        cdef int rv = _call_libpq_int_with_param(self, <conn_int_f_with_param>libpq.PQsendClosePrepared, name)
+        cdef int rv
+        cdef libpq.PGconn *pgconn_ptr
+        with cython.critical_section(self):
+            pgconn_ptr = self._pgconn_ptr
+            if pgconn_ptr is not NULL:
+                rv = libpq.PQsendClosePrepared(pgconn_ptr, name)
+        if pgconn_ptr is NULL:
+            raise e.OperationalError("the connection is closed")
         if not rv:
             raise e.OperationalError(
                 f"sending close prepared failed: {self.get_error_message()}"
@@ -525,7 +568,14 @@ cdef class PGconn:
 
     def close_portal(self, const char *name) -> PGresult:
         _check_supported("PQclosePortal", 170000)
-        cdef libpq.PGresult *rv = <libpq.PGresult *>_call_libpq_with_param(self, <conn_f_with_param>libpq.PQclosePortal, name)
+        cdef libpq.PGresult *rv
+        cdef libpq.PGconn *pgconn_ptr
+        with cython.critical_section(self):
+            pgconn_ptr = self._pgconn_ptr
+            if pgconn_ptr is not NULL:
+                rv = libpq.PQclosePortal(pgconn_ptr, name)
+        if pgconn_ptr is NULL:
+            raise e.OperationalError("the connection is closed")
         if rv is NULL:
             raise e.OperationalError(
                 f"close prepared failed: {self.get_error_message()}"
@@ -534,7 +584,14 @@ cdef class PGconn:
 
     def send_close_portal(self, const char *name) -> None:
         _check_supported("PQsendClosePortal", 170000)
-        cdef int rv = _call_libpq_int_with_param(self, <conn_int_f_with_param>libpq.PQsendClosePortal, name)
+        cdef int rv
+        cdef libpq.PGconn *pgconn_ptr
+        with cython.critical_section(self):
+            pgconn_ptr = self._pgconn_ptr
+            if pgconn_ptr is not NULL:
+                rv = libpq.PQsendClosePortal(pgconn_ptr, name)
+        if pgconn_ptr is NULL:
+            raise e.OperationalError("the connection is closed")
         if not rv:
             raise e.OperationalError(
                 f"sending close prepared failed: {self.get_error_message()}"
@@ -798,19 +855,11 @@ cdef class PGconn:
                 f"flush request failed: {self.get_error_message()}")
 
 
-cdef void *_call_libpq(PGconn self, conn_f func):
-    cdef void *rv = NULL
-    cdef libpq.PGconn *pgconn_ptr
-    with cython.critical_section(self):
-        pgconn_ptr = self._pgconn_ptr
-        if pgconn_ptr is not NULL:
-            rv = func(pgconn_ptr)
-    if pgconn_ptr is NULL:
-        raise e.OperationalError("the connection is closed")
-    return rv
-
-
-cdef void *_call_libpq_with_param(PGconn self, conn_f_with_param func, const char *param):
+cdef void *_call_libpq_with_param(
+    PGconn self,
+    conn_f_with_param func,
+    const char *param
+):
     cdef void *rv = NULL
     cdef libpq.PGconn *pgconn_ptr
     with cython.critical_section(self):
@@ -822,19 +871,23 @@ cdef void *_call_libpq_with_param(PGconn self, conn_f_with_param func, const cha
     return rv
 
 
-cdef int _call_libpq_int(PGconn self, conn_int_f func, bint raise_exception = 1):
+cdef int _call_libpq_int(PGconn self, conn_int_f func):
     cdef int rv
     cdef libpq.PGconn *pgconn_ptr
     with cython.critical_section(self):
         pgconn_ptr = self._pgconn_ptr
         if pgconn_ptr is not NULL:
             rv = func(pgconn_ptr)
-    if pgconn_ptr is NULL and raise_exception:
+    if pgconn_ptr is NULL:
         raise e.OperationalError("the connection is closed")
     return rv
 
 
-cdef int _call_libpq_int_with_param(PGconn self, conn_int_f_with_param func, const char *param):
+cdef int _call_libpq_int_with_param(
+    PGconn self,
+    conn_int_f_with_param func,
+    const char *param
+):
     cdef int rv
     cdef libpq.PGconn *pgconn_ptr
     with cython.critical_section(self):
@@ -847,7 +900,14 @@ cdef int _call_libpq_int_with_param(PGconn self, conn_int_f_with_param func, con
 
 
 cdef bytes _call_libpq_bytes(PGconn self, conn_bytes_f func):
-    cdef char *rv = <char *>_call_libpq(self, <conn_f>func)
+    cdef char *rv
+    cdef libpq.PGconn *pgconn_ptr
+    with cython.critical_section(self):
+        pgconn_ptr = self._pgconn_ptr
+        if pgconn_ptr is not NULL:
+            rv = func(pgconn_ptr)
+    if pgconn_ptr is NULL:
+        raise e.OperationalError("the connection is closed")
     if rv is not NULL:
         return rv
     return b""
