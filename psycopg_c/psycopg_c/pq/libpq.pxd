@@ -118,7 +118,8 @@ cdef extern from "libpq-fe.h":
     PostgresPollingStatusType PQconnectPoll(PGconn *conn) noexcept nogil
     PQconninfoOption *PQconndefaults() noexcept nogil
     PQconninfoOption *PQconninfo(PGconn *conn) noexcept nogil
-    PQconninfoOption *PQconninfoParse(const char *conninfo, char **errmsg) noexcept nogil
+    PQconninfoOption *PQconninfoParse(const char *conninfo,
+                                      char **errmsg) noexcept nogil
     void PQfinish(PGconn *conn) noexcept nogil
     void PQreset(PGconn *conn) noexcept nogil
     int PQresetStart(PGconn *conn) noexcept nogil
@@ -136,7 +137,8 @@ cdef extern from "libpq-fe.h":
     char *PQoptions(const PGconn *conn) noexcept nogil
     ConnStatusType PQstatus(const PGconn *conn) noexcept nogil
     PGTransactionStatusType PQtransactionStatus(const PGconn *conn) noexcept nogil
-    const char *PQparameterStatus(const PGconn *conn, const char *paramName) noexcept nogil
+    const char *PQparameterStatus(const PGconn *conn,
+                                  const char *paramName) noexcept nogil
     int PQprotocolVersion(const PGconn *conn) noexcept nogil
     int PQfullProtocolVersion(const PGconn *conn) noexcept nogil
     int PQserverVersion(const PGconn *conn) noexcept nogil
@@ -146,7 +148,8 @@ cdef extern from "libpq-fe.h":
     int PQconnectionNeedsPassword(const PGconn *conn) noexcept nogil
     int PQconnectionUsedPassword(const PGconn *conn) noexcept nogil
     int PQconnectionUsedGSSAPI(const PGconn *conn) noexcept nogil
-    int PQsslInUse(PGconn *conn) noexcept nogil # TODO: const in PG 12 docs - verify/report
+    # TODO PQsslInUse: const in PG 12 docs - verify/report
+    int PQsslInUse(PGconn *conn) noexcept nogil
     # TODO: PQsslAttribute, PQsslAttributeNames, PQsslStruct, PQgetssl
 
     # 33.3. Command Execution Functions
@@ -194,9 +197,15 @@ cdef extern from "libpq-fe.h":
     int PQfmod(const PGresult *res, int column_number) noexcept nogil
     int PQfsize(const PGresult *res, int column_number) noexcept nogil
     int PQbinaryTuples(const PGresult *res) noexcept nogil
-    char *PQgetvalue(const PGresult *res, int row_number, int column_number) noexcept nogil
-    int PQgetisnull(const PGresult *res, int row_number, int column_number) noexcept nogil
-    int PQgetlength(const PGresult *res, int row_number, int column_number) noexcept nogil
+    char *PQgetvalue(const PGresult *res,
+                     int row_number,
+                     int column_number) noexcept nogil
+    int PQgetisnull(const PGresult *res,
+                    int row_number,
+                    int column_number) noexcept nogil
+    int PQgetlength(const PGresult *res,
+                    int row_number,
+                    int column_number) noexcept nogil
     int PQnparams(const PGresult *res) noexcept nogil
     Oid PQparamtype(const PGresult *res, int param_number) noexcept nogil
     # PQprint: pretty useless
@@ -207,7 +216,9 @@ cdef extern from "libpq-fe.h":
     Oid PQoidValue(const PGresult *res) noexcept nogil
 
     # 33.3.4. Escaping Strings for Inclusion in SQL Commands
-    char *PQescapeIdentifier(PGconn *conn, const char *str, size_t length) noexcept nogil
+    char *PQescapeIdentifier(PGconn *conn,
+                             const char *str,
+                             size_t length) noexcept nogil
     char *PQescapeLiteral(PGconn *conn, const char *str, size_t length) noexcept nogil
     size_t PQescapeStringConn(PGconn *conn,
                               char *to, const char *from_, size_t length,
@@ -289,11 +300,17 @@ cdef extern from "libpq-fe.h":
     # 33.11. Miscellaneous Functions
     void PQfreemem(void *ptr) noexcept nogil
     void PQconninfoFree(PQconninfoOption *connOptions) noexcept nogil
-    char *PQencryptPasswordConn(
-        PGconn *conn, const char *passwd, const char *user, const char *algorithm) noexcept nogil
-    PGresult *PQchangePassword(PGconn *conn, const char *user, const char *passwd) noexcept nogil
+    char *PQencryptPasswordConn(PGconn *conn,
+                                const char *passwd,
+                                const char *user,
+                                const char *algorithm) noexcept nogil
+    PGresult *PQchangePassword(PGconn *conn,
+                               const char *user,
+                               const char *passwd) noexcept nogil
     PGresult *PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status) noexcept nogil
-    int PQsetResultAttrs(PGresult *res, int numAttributes, PGresAttDesc *attDescs) noexcept nogil
+    int PQsetResultAttrs(PGresult *res,
+                         int numAttributes,
+                         PGresAttDesc *attDescs) noexcept nogil
     int PQlibVersion() noexcept nogil
 
     # 33.12. Notice Processing
